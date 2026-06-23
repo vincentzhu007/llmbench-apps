@@ -1,0 +1,56 @@
+# Xcode
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# Build
+.build/
+.build-*/
+*.o
+*.d
+*.dia
+*.swiftsourceinfo
+*.swiftconstvalues
+*.swiftdeps
+*.swiftmodule
+*.swiftdoc
+ModuleCache.noindex/
+SDKStatCaches.noindex/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Model binaries (large files)
+*.mlmodelc
+*.aimodelc
+
+# Internal
+.memsearch/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# HuggingFace
+.cache/
+
+# Downloaded models and generated exports (large files)
+qwen3.5-0.8B-CoreAI/
+exports/
+
+# Cloned dependency (should be set up separately)
+coreai-models/
+
+# Temp
+/tmp/
+*~

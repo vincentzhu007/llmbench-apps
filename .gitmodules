@@ -1,0 +1,3 @@
+[submodule "coreai-model-zoo"]
+	path = coreai-model-zoo
+	url = https://github.com/john-rocky/coreai-model-zoo.git
