@@ -240,7 +240,7 @@ targets: [
 
 `LLMChatApp.swift` 的 `@main` 去掉，改成库内 `RootView`（指向 `GalleryScreen`）。`@main` 下放到各 App target。
 
-**新增 Xcode 工程** `LLMChatApps.xcodeproj`（放 `LLMChat/App/`）:
+**新增 Xcode 工程** `LLMChatApps.xcodeproj`（放 `app/ios/LLMChat/App/`）:
 
 ```
 LLMChatApps.xcodeproj

@@ -38,16 +38,17 @@ Apple 在 iOS 27 / macOS 27 引入了全新的 **Core AI** 运行时与 `.aimode
 
 ```
 llmbench-apps/
-├── LLMChat/                       # Gallery 风格 SwiftUI 聊天应用（iOS 27 / macOS 27）
-│   ├── Package.swift              # SwiftPM：LLMChat 库 + LLMChatRunner(macOS) + LLMChatBench
-│   ├── Sources/LLMChat/           # 共享 UI 库
-│   │   ├── RootView.swift         # 库入口 → GalleryScreen
-│   │   ├── Models/ModelRegistry.swift   # 模型描述 + 路径解析（按平台）
-│   │   ├── ViewModel/ChatViewModel.swift# 按模型实例化 + 流式 + throughput 计时
-│   │   └── Views/                 # GalleryScreen/Card · ChatScreen · ChatBubble · MetricsLabel · ModelCard · SettingsSheet
-│   ├── Sources/LLMChatRunner/     # macOS @main App（swift run）
-│   ├── Sources/LLMChatBench/      # headless bench，打印每个模型 throughput
-│   └── App/project.yml            # xcodegen：macOS + iOS 双 App target 工程描述
+├── app/
+│   └── ios/LLMChat/               # Gallery 风格 SwiftUI 聊天应用（iOS 27 / macOS 27）
+│       ├── Package.swift          # SwiftPM：LLMChat 库 + LLMChatRunner(macOS) + LLMChatBench
+│       ├── Sources/LLMChat/       # 共享 UI 库
+│       │   ├── RootView.swift     # 库入口 → GalleryScreen
+│       │   ├── Models/ModelRegistry.swift   # 模型描述 + 路径解析（按平台）
+│       │   ├── ViewModel/ChatViewModel.swift# 按模型实例化 + 流式 + throughput 计时
+│       │   └── Views/             # GalleryScreen/Card · ChatScreen · ChatBubble · MetricsLabel · ModelCard · SettingsSheet
+│       ├── Sources/LLMChatRunner/ # macOS @main App（swift run）
+│       ├── Sources/LLMChatBench/  # headless bench，打印每个模型 throughput
+│       └── App/project.yml        # xcodegen：macOS + iOS 双 App target 工程描述
 │
 ├── export_qwen35_4b_stateful.py   # 导出 Qwen3.5-4B → 有状态 .aimodel（fp16 / int8）
 ├── qwen3_5_overlay.py             # Qwen3.5 模型覆写层（hybrid SSM + full-attention）
@@ -71,7 +72,7 @@ llmbench-apps/
 
 - **Xcode 27**（Swift 6.4 + iOS 27 / macOS 27 SDK，含 `CoreAI` 框架）
 - 目标设备：iOS 27 或 macOS 27
-- 兄弟依赖：需在**同级目录**有 `coreai-models` 运行时库（应用通过 `Package.swift` 中的 `.package(path: "../coreai-models")` 引用它）
+- 兄弟依赖：需在**仓库根目录**有 `coreai-models` 运行时库（应用通过 `Package.swift` 中的 `.package(path: "../../../coreai-models")` 引用它）
 
 **运行模型转换管道**
 
@@ -87,8 +88,8 @@ llmbench-apps/
 ### 1. 构建并运行 LLMChat 应用
 
 ```bash
-# 0) 先准备同级目录的 coreai-models 运行时（见「环境要求」）
-git clone --recurse-submodules <本仓库> && cd llmbench-apps/LLMChat
+# 0) 先准备仓库根目录的 coreai-models 运行时（见「环境要求」）
+git clone --recurse-submodules <本仓库> && cd llmbench-apps/app/ios/LLMChat
 
 # 1a) macOS：直接用 SwiftPM 运行（推荐开发用法）
 swift run LLMChatRunner
@@ -180,7 +181,7 @@ git submodule update --init --recursive
 2. App 的 `Documents/Models/<bundleName>`
 3. 开发回退路径（`devPath` 绝对路径）
 
-加模型只需在 `LLMChat/Sources/LLMChat/Models/ModelRegistry.swift` 的 `ModelRegistry.all` 里追加一个 `ModelDescriptor(...)`（填 `bundleName`、量化、词表、主色、`devPath` 指向你的 `exports/<你的模型>/`），Gallery 网格就会多出一张卡片。
+加模型只需在 `app/ios/LLMChat/Sources/LLMChat/Models/ModelRegistry.swift` 的 `ModelRegistry.all` 里追加一个 `ModelDescriptor(...)`（填 `bundleName`、量化、词表、主色、`devPath` 指向你的 `exports/<你的模型>/`），Gallery 网格就会多出一张卡片。
 
 ---
 
