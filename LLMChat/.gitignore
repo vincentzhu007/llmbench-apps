@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+
+# Xcode project is generated from App/project.yml via xcodegen — do not commit
+App/LLMChatApps.xcodeproj/
+App/build/
+build/
+DerivedData/
+
+# Per-user Xcode state
+*.xcuserstate
+xcuserdata/
+.DS_Store

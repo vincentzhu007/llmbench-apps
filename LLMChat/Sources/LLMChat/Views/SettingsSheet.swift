@@ -7,7 +7,6 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Generation Settings
                 Section("Generation") {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -20,27 +19,28 @@ struct SettingsSheet: View {
                         Slider(value: $vm.temperature, in: 0.0...2.0, step: 0.05)
                     }
 
-                    Stepper("Max Tokens: \(vm.maxTokens)", value: $vm.maxTokens, in: 64...4096, step: 64)
+                    Stepper("Max tokens: \(vm.maxTokens)", value: $vm.maxTokens, in: 64...4096, step: 64)
                 }
 
-                // Model Info
                 Section("Model") {
-                    LabeledContent("Name", value: vm.modelName)
-                    LabeledContent("Size", value: vm.modelSize)
-                    LabeledContent("Format", value: vm.modelFormat)
-                    LabeledContent("Vocab", value: vm.modelVocab)
-                    LabeledContent("Speed", value: vm.modelSpeed)
+                    LabeledContent("Name", value: vm.model.displayName)
+                    LabeledContent("Quant", value: vm.model.quant)
+                    LabeledContent("Params", value: vm.model.params)
+                    LabeledContent("Vocab", value: vm.model.vocab)
+                    if let rom = vm.model.romSize {
+                        LabeledContent("ROM size", value: rom)
+                    }
+                    LabeledContent("Est. decode", value: "~\(vm.model.estimatedDecodeTokPerSec) tok/s")
                 }
 
-                // About
                 Section("About") {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Qwen Chat")
+                        Text("LLMChat Gallery")
                             .font(.headline)
-                        Text("Powered by Apple Foundation Models & Core AI")
+                        Text("Powered by Apple Foundation Models & Core AI.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Model runs entirely on-device. No network required.")
+                        Text("Models run entirely on-device. Prefill & decode speed are measured live.")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }

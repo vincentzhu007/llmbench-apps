@@ -1,7 +1,22 @@
 # LLMChat — Gallery 风格 LLM Chat 应用设计
 
 **日期**: 2026-06-24
-**目标**: 把现有 LLMChat 重构为 Google AI Gallery 风格的 UI 应用，支持 LLM 对话，并展示真实的 Prefill / Decode 推理速度。同时支持 macOS 和 iOS 双平台运行。
+**目标**: 把现有 LLMChat 重构为 Google AI Gallery 风格的 UI 应用，支持 LLM 对话，并展示推理速度。同时支持 macOS 和 iOS 双平台运行。
+
+---
+
+## 实施补遗（2026-06-25）
+
+设计落地时发现一个关键事实，**metrics 口径相应调整**：
+
+- **设计原定** prefill/decode 拆分（第 3/4 段）基于流式 TTFT 近似。
+- **实测发现**：CoreAI 的 `streamResponse` 会**缓冲输出、批量吐 snapshot**（11 个 snapshot 挤在 38ms 内，首个 snapshot 时已生成 77 token），所以 streaming 切不出 prefill/decode；`PerformanceMetrics.shared` 在 `LanguageModelSession` 路径也不填充（仅 pipelined 引擎手动喂）。
+- **且模型为 S=1 导出**（`COREAI_CHUNK_THRESHOLD=1`，否则 prefill 多 token 触发 `NDArrayDescriptor` 形状断言崩溃），S=1 下 prefill 与 decode 本就是同一种单 token 操作、速率相等。
+- **决定（用户已选 A）**：每条回复显示**可靠的总吞吐** `throughput = (prompt+output) tokens / 总墙钟时间` + 真实 token 数 + TTFT，诚实标注 `(S=1: prefill≈decode)`。验证：0.6B ~175 tok/s、0.8B ~70 tok/s（与 model card 吻合）。
+- **后续 B（未做）**：接入 `CoreAIPipelinedEngine` + 0.8B 的 `prefill_b2048` 模型，拿真实的 prefill/decode 拆分。仅 0.8B 可行（0.6B 无独立 prefill 导出）。
+
+另：设计第 2/6 段假设 0.8B 按 `ios-gpu/macos` 平台分支加载 —— 实测那两个目录是裸 aimodel（无 tokenizer/metadata），不是 `LanguageModelSession` 可加载的 bundle。已简化为**每模型单 bundle、两端共用**（0.8B 用 `gpu-pipelined/..._perchan_sym` bundle）。
+
 
 ---
 

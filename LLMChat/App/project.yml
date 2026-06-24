@@ -1,0 +1,65 @@
+name: LLMChatApps
+options:
+  bundleIdPrefix: com.llmchat
+  deploymentTarget:
+    macOS: "27.0"
+    iOS: "27.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+# Local SwiftPM package providing the shared `LLMChat` library (Gallery, chat,
+# streaming timing, metrics). Its Package.swift lives one level up from App/.
+packages:
+  LLMChat:
+    path: ".."
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  LLMChat-macOS:
+    type: application
+    platform: macOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: macOS
+    dependencies:
+      - package: LLMChat
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.llmchat.macos
+        PRODUCT_NAME: LLMChat
+        # Read on-device models from absolute dev paths during development.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: "LLMChat"
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+
+  LLMChat-iOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: iOS
+    dependencies:
+      - package: LLMChat
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.llmchat.ios
+        PRODUCT_NAME: LLMChat
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
