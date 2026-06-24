@@ -3,6 +3,11 @@ import Foundation
 
 // MARK: - NDArray helpers
 
+func ndDesc(_ d: InferenceValue.Descriptor?) -> NDArrayDescriptor? {
+    guard case .ndArray(let nd)? = d else { return nil }
+    return nd
+}
+
 func fillNDArray<T, S: Sequence>(_ array: inout NDArray, as: T.Type, with values: S)
 where S.Element == T, T: BitwiseCopyable {
     var view = array.mutableView(as: T.self)
@@ -21,11 +26,6 @@ func readNDArray<T: BitwiseCopyable>(_ array: NDArray, as: T.Type, count: Int) -
     return out
 }
 
-func ndDesc(_ d: InferenceValue.Descriptor?) -> NDArrayDescriptor? {
-    guard case .ndArray(let nd)? = d else { return nil }
-    return nd
-}
-
 // MARK: - BPE Tokenizer
 
 final class BPETokenizer {
@@ -34,19 +34,15 @@ final class BPETokenizer {
     var mergeRank: [String: Int] = [:]
 
     init?(dir: URL) {
-        let vocabURL = dir.appendingPathComponent("vocab.json")
-        let mergesURL = dir.appendingPathComponent("merges.txt")
+        guard let vd = try? Data(contentsOf: dir.appendingPathComponent("vocab.json")),
+              let vj = try? JSONSerialization.jsonObject(with: vd) as? [String: Any],
+              let v = vj as? [String: Int] else { return nil }
+        self.vocab = v
+        for (t, i) in v { invVocab[i] = t }
 
-        guard let vocabData = try? Data(contentsOf: vocabURL),
-              let vocabJSON = try? JSONSerialization.jsonObject(with: vocabData) as? [String: Any],
-              let vocabDict = vocabJSON as? [String: Int] else { return nil }
-        self.vocab = vocabDict
-        for (t, id) in vocabDict { invVocab[id] = t }
-
-        if let s = try? String(contentsOf: mergesURL, encoding: .utf8) {
-            let lines = s.components(separatedBy: "\n").dropFirst()
-                .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-            for (i, line) in lines.enumerated() {
+        if let s = try? String(contentsOf: dir.appendingPathComponent("merges.txt"), encoding: .utf8) {
+            for (i, line) in s.components(separatedBy: "\n").dropFirst()
+                .filter({ !$0.isEmpty && !$0.hasPrefix("#") }).enumerated() {
                 let p = line.components(separatedBy: " ")
                 if p.count >= 2 { mergeRank["\(p[0]) \(p[1])"] = i }
             }
@@ -54,7 +50,7 @@ final class BPETokenizer {
     }
 
     func encode(_ text: String) -> [Int] {
-        var ids: [Int] = []
+        var ids = [Int]()
         for word in text.components(separatedBy: " ") {
             guard !word.isEmpty else { continue }
             var tokens = word.map { String($0) }
@@ -64,8 +60,7 @@ final class BPETokenizer {
                     if let r = mergeRank["\(tokens[i]) \(tokens[i+1])"], r < best { best = r; idx = i }
                 }
                 if idx < 0 { break }
-                tokens[idx] = tokens[idx] + tokens[idx + 1]
-                tokens.remove(at: idx + 1)
+                tokens[idx] += tokens[idx + 1]; tokens.remove(at: idx + 1)
             }
             for t in tokens { ids.append(vocab[t] ?? vocab["<unk>"] ?? 0) }
         }
@@ -86,126 +81,56 @@ final class BPETokenizer {
     var eosTokenId: Int { vocab["<|im_end|>"] ?? vocab["<|endoftext|>"] ?? 248046 }
 }
 
-// MARK: - Inference Engine (host-cache: states as I/O tensors)
+// MARK: - Simple Forward Engine
 
-final class InferenceEngine {
+struct ForwardEngine {
     let fn: InferenceFunction
-    let desc: InferenceFunctionDescriptor
-    let ctx: Int
+    let seqLen: Int
     let vocabSize: Int
 
-    let inputIdsDesc, posIdsDesc, maskDesc: NDArrayDescriptor
-    let pastKDesc, pastVDesc, convDesc, recDesc: NDArrayDescriptor
+    let inputDesc: NDArrayDescriptor
+    let outputDesc: NDArrayDescriptor
 
-    var pastK, pastV, convState, recState: NDArray
-
-    init?(modelURL: URL, maxCtx: Int) async throws {
+    init(modelURL: URL) async throws {
         let model = try await AIModel(contentsOf: modelURL)
         guard let d = model.functionDescriptor(for: "main"),
-              let f = try model.loadFunction(named: "main") else { return nil }
-        self.fn = f; self.desc = d; self.ctx = maxCtx
-
-        guard let iid = ndDesc(d.inputDescriptor(of: "input_ids")),
-              let pid = ndDesc(d.inputDescriptor(of: "position_ids")),
-              let mid = ndDesc(d.inputDescriptor(of: "causal_mask")),
-              let pkd = ndDesc(d.inputDescriptor(of: "past_k")),
-              let pvd = ndDesc(d.inputDescriptor(of: "past_v")),
-              let cd = ndDesc(d.inputDescriptor(of: "conv_state")),
-              let rd = ndDesc(d.inputDescriptor(of: "rec_state")),
-              let ld = ndDesc(d.outputDescriptor(of: "logits")) else { return nil }
-
-        self.inputIdsDesc = iid; self.posIdsDesc = pid; self.maskDesc = mid
-        self.pastKDesc = pkd; self.pastVDesc = pvd; self.convDesc = cd; self.recDesc = rd
-        self.vocabSize = ld.shape.last ?? 248320
-
-        self.pastK = Self.makeZero(pkd, maxCtx)
-        self.pastV = Self.makeZero(pvd, maxCtx)
-        self.convState = Self.makeZero(cd, maxCtx)
-        self.recState = Self.makeZero(rd, maxCtx)
-
-        print("Engine: vocab=\(vocabSize), ctx=\(maxCtx)")
-    }
-
-    private static func makeZero(_ desc: NDArrayDescriptor, _ ctx: Int) -> NDArray {
-        let shape = desc.shape.map { $0 < 0 ? ctx : $0 }
-        var arr = NDArray(descriptor: desc.resolvingDynamicDimensions(shape))
-        fillNDArray(&arr, as: Float16.self, with: [Float16](repeating: 0, count: shape.reduce(1, *)))
-        return arr
-    }
-
-    func step(tokenId: Int32, position: Int) async throws -> [Float16] {
-        var inputIds = NDArray(descriptor: inputIdsDesc.resolvingDynamicDimensions([1, 1]))
-        fillNDArray(&inputIds, as: Int32.self, with: [tokenId])
-
-        var posIds = NDArray(descriptor: posIdsDesc.resolvingDynamicDimensions([1, 1]))
-        fillNDArray(&posIds, as: Int32.self, with: [Int32(position)])
-
-        let maskShape = maskDesc.shape.map { $0 < 0 ? ctx + 1 : $0 }
-        var mask = NDArray(descriptor: maskDesc.resolvingDynamicDimensions(maskShape))
-        var maskVals = [Float16](repeating: 0, count: maskShape.reduce(1, *))
-        for i in 0...position { maskVals[i] = 1.0 }
-        fillNDArray(&mask, as: Float16.self, with: maskVals)
-
-        var result = try await fn.run(inputs: [
-            "input_ids": inputIds, "position_ids": posIds, "causal_mask": mask,
-            "past_k": pastK, "past_v": pastV,
-            "conv_state": convState, "rec_state": recState,
-        ])
-
-        guard let logitsArr = result.remove("logits")?.ndArray else {
+              let f = try model.loadFunction(named: "main") else {
             throw NSError(domain: "Engine", code: 1)
         }
-        let logits = readNDArray(logitsArr, as: Float16.self, count: vocabSize)
-
-        if let kCur = result.remove("k_cur")?.ndArray {
-            pastK = writeKVColumn(into: pastK, desc: pastKDesc, from: kCur, position: position)
+        self.fn = f
+        guard let iDesc = ndDesc(d.inputDescriptor(of: "input_ids")),
+              let oDesc = ndDesc(d.outputDescriptor(of: "logits")) else {
+            throw NSError(domain: "Engine", code: 2)
         }
-        if let vCur = result.remove("v_cur")?.ndArray {
-            pastV = writeKVColumn(into: pastV, desc: pastVDesc, from: vCur, position: position)
-        }
-        if let c = result.remove("conv_cur")?.ndArray {
-            convState = rebuildState(from: c, desc: convDesc)
-        }
-        if let r = result.remove("rec_cur")?.ndArray {
-            recState = rebuildState(from: r, desc: recDesc)
-        }
-
-        return logits
+        self.inputDesc = iDesc
+        self.outputDesc = oDesc
+        self.seqLen = iDesc.shape[1]
+        self.vocabSize = oDesc.shape.last ?? 248320
+        print("Engine: seqLen=\(seqLen), vocab=\(vocabSize)")
     }
 
-    private func writeKVColumn(into cache: NDArray, desc: NDArrayDescriptor,
-                                from col: NDArray, position: Int) -> NDArray {
-        let nL = desc.shape[0], nH = desc.shape[2], hd = desc.shape.last ?? 256
-        var data = readNDArray(cache, as: Float16.self, count: nL * nH * ctx * hd)
-        let colData = readNDArray(col, as: Float16.self, count: nL * nH * hd)
+    func forward(_ tokenIds: [Int32]) async throws -> [Int32] {
+        let n = min(tokenIds.count, seqLen)
+        var padded = [Int32](repeating: 0, count: seqLen)
+        let start = seqLen - n
+        for i in 0..<n { padded[start + i] = tokenIds[tokenIds.count - n + i] }
 
-        for l in 0..<nL {
-            for h in 0..<nH {
-                let co = l * nH * hd + h * hd
-                let do_ = l * nH * ctx * hd + h * ctx * hd + position * hd
-                for d in 0..<hd { data[do_ + d] = colData[co + d] }
-            }
+        let shape = [1, seqLen]
+        var ids = NDArray(descriptor: inputDesc.resolvingDynamicDimensions(shape))
+        fillNDArray(&ids, as: Int32.self, with: padded)
+
+        var result = try await fn.run(inputs: ["input_ids": ids])
+
+        guard let logitsArr = result.remove("logits")?.ndArray else {
+            throw NSError(domain: "Engine", code: 3)
         }
+        let logits = readNDArray(logitsArr, as: Float16.self, count: seqLen * vocabSize)
 
-        let shape = desc.shape.map { $0 < 0 ? ctx : $0 }
-        var newArr = NDArray(descriptor: desc.resolvingDynamicDimensions(shape))
-        fillNDArray(&newArr, as: Float16.self, with: data)
-        return newArr
-    }
-
-    private func rebuildState(from src: NDArray, desc: NDArrayDescriptor) -> NDArray {
-        let shape = desc.shape.map { $0 < 0 ? ctx : $0 }
-        let total = shape.reduce(1, *)
-        var newArr = NDArray(descriptor: desc.resolvingDynamicDimensions(shape))
-        let data = readNDArray(src, as: Float16.self, count: total)
-        fillNDArray(&newArr, as: Float16.self, with: data)
-        return newArr
-    }
-
-    func argmax(_ logits: [Float16]) -> Int32 {
-        var best = 0, bestVal = logits[0]
-        for i in 1..<logits.count where logits[i] > bestVal { bestVal = logits[i]; best = i }
-        return Int32(best)
+        // Last token's logits + argmax
+        let offset = (seqLen - 1) * vocabSize
+        var best = Int32(0), bestVal = logits[offset]
+        for i in 1..<vocabSize where logits[offset + i] > bestVal { bestVal = logits[offset + i]; best = Int32(i) }
+        return [best]
     }
 }
 
@@ -218,52 +143,33 @@ func main() async {
         return
     }
 
-    let modelURL = URL(fileURLWithPath: args[1])
-    let tokDir = URL(fileURLWithPath: args[2])
+    let modelPath = args[1]; let tokPath = args[2]
     let prompt = args.count > 3 ? args[3] : "The capital of France is"
 
-    print("=== Qwen3.5-0.8B Core AI Inference (Swift) ===")
-
-    guard let tok = BPETokenizer(dir: tokDir) else {
-        print("Error: failed to load tokenizer"); return
+    guard let tok = BPETokenizer(dir: URL(fileURLWithPath: tokPath)) else {
+        print("Error: tokenizer"); return
     }
+    print("Qwen3.5-4B int4 stateless forward")
+    print("Model: \(modelPath)")
 
     do {
-        guard let engine = try await InferenceEngine(modelURL: modelURL, maxCtx: 2048) else {
-            print("Error: failed to create engine"); return
-        }
+        let engine = try await ForwardEngine(modelURL: URL(fileURLWithPath: modelPath))
 
-        let promptIds = tok.encode(prompt)
-        print("Prompt: '\(prompt)' (\(promptIds.count) tokens)")
-
-        var logits: [Float16] = []
+        var history = tok.encode(prompt)
+        print("Prompt (\(history.count) tokens): \(prompt)")
         let t0 = Date()
-        for (i, tid) in promptIds.enumerated() {
-            logits = try await engine.step(tokenId: Int32(tid), position: i)
-        }
-        let prefillMs = -t0.timeIntervalSinceNow * 1000
-        print(String(format: "Prefill: %d tokens in %.0fms", promptIds.count, prefillMs))
 
-        let eosId = Int32(tok.eosTokenId)
-        var generated: [Int32] = []
-        var nextId = engine.argmax(logits)
-        let decStart = Date()
-
-        for _ in 0..<64 {
-            if nextId == eosId { break }
-            generated.append(nextId)
-            logits = try await engine.step(tokenId: nextId, position: promptIds.count + generated.count - 1)
-            nextId = engine.argmax(logits)
+        let maxNew = 32; let eos = Int32(tok.eosTokenId)
+        for _ in 0..<maxNew {
+            let next = try await engine.forward(history.map { Int32($0) })
+            if next[0] == eos { break }
+            history.append(Int(next[0]))
         }
 
-        let decElapsed = -decStart.timeIntervalSinceNow
-        print("\n" + String(repeating: "=", count: 50))
+        let elapsed = -t0.timeIntervalSinceNow
+        let generated = history.dropFirst(tok.encode(prompt).count)
         print("Generated: \(tok.decode(generated.map { Int($0) }))")
-        print(String(repeating: "=", count: 50))
-        if !generated.isEmpty {
-            print(String(format: "%d tokens in %.2fs (%.1f tok/s)",
-                         generated.count, decElapsed, Double(generated.count) / decElapsed))
-        }
+        print(String(format: "\(generated.count) tokens in %.1fs (%.1f tok/s)", elapsed, Double(generated.count)/elapsed))
     } catch {
         print("Error: \(error)")
     }

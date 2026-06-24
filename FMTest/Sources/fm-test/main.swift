@@ -15,12 +15,13 @@ func sizeStr(_ url: URL) -> String {
 }
 
 func main() async {
-    let bundleDir = "../qwen3.5-0.8B-CoreAI/gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym"
+    let bundleDir = "../exports/qwen3_0.6b/qwen3_0_6b_4bit_dynamic"
     let url = URL(fileURLWithPath: bundleDir)
 
-    print("=== Qwen3.5-0.8B via Foundation Models ===\n")
+    print("=== Qwen3-0.6B via Foundation Models ===\n")
 
-    setenv("COREAI_CHUNK_THRESHOLD", "1", 1)
+    // Qwen3 is standard architecture (2-state KV cache) — no extra states needed.
+    // No COREAI_CHUNK_THRESHOLD required for dynamic models.
 
     do {
         // ---- Load ----
@@ -28,92 +29,71 @@ func main() async {
         let model = try await CoreAILanguageModel(resourcesAt: url)
         let loadMs = -loadStart.timeIntervalSinceNow * 1000
 
+        let aimodelURL = url.appendingPathComponent("\(url.lastPathComponent).aimodel")
+
         let session = LanguageModelSession(
             model: model,
             instructions: "You are a helpful assistant. Answer concisely."
         )
 
-        // ---- Model size ----
-        let aimodelURL = url.appendingPathComponent("\(url.lastPathComponent).aimodel")
-        let bundleSize = sizeStr(url)
-        let aimodelFileSize = sizeStr(aimodelURL)
+        // Short prompt test
+        let shortPrompt = "请介绍5种上海的美食"
+        print("Prompt: \(shortPrompt)")
+        let t0 = Date()
+        let response = try await session.respond(to: shortPrompt)
+        let shortMs = -t0.timeIntervalSinceNow * 1000
+        let shortUsage = session.usage
 
-        // ---- Long prompt (~1k tokens) ----
-        // Build a long prompt by repeating paragraphs
-        let baseText = """
-        请详细分析以下内容的各个方面，包括历史背景、技术原理、应用场景和未来发展趋势。\
-        人工智能（Artificial Intelligence）是计算机科学的一个重要分支，旨在创建能够模拟人类智能的系统。\
-        从1956年达特茅斯会议正式提出AI概念以来，这一领域经历了多次起伏。\
-        早期的符号主义AI试图通过逻辑推理来模拟人类思维，但受限于计算能力和知识表示的困难，进展缓慢。\
-        20世纪80年代，专家系统曾一度兴起，但很快因维护困难和知识获取瓶颈而衰落。\
-        进入21世纪，随着大数据、云计算和GPU并行计算的发展，深度学习技术取得了突破性进展。\
-        2012年，AlexNet在ImageNet图像识别比赛中大幅领先传统方法，标志着深度学习时代的到来。\
-        此后，循环神经网络（RNN）、长短期记忆网络（LSTM）、生成对抗网络（GAN）等技术相继涌现。\
-        2017年，Google提出了Transformer架构，彻底改变了自然语言处理领域的面貌。\
-        基于Transformer的预训练语言模型如BERT、GPT系列展现出了强大的语义理解和生成能力。\
-        2022年底，ChatGPT的发布引发了全球性的AI热潮，展示了大型语言模型在对话、写作、编程等方面的惊人能力。\
-        当前，AI技术正在向多模态、具身智能、通用人工智能（AGI）等方向演进。\
-        同时，AI的安全治理、伦理规范、隐私保护等问题也日益受到关注。\
-        在产业应用方面，AI已渗透到医疗诊断、金融风控、自动驾驶、智能制造、智慧农业等各个领域。\
-        未来，AI预计将在科学发现、药物研发、气候变化应对等方面发挥更大作用。\
-        然而，如何确保AI系统的可靠性、可解释性和公平性，仍然是亟待解决的关键挑战。\
-        请从以上多个维度对这一主题进行全面深入的分析，并给出你的见解。
+        print("Response: \(response.content.prefix(600))")
+        if response.content.count > 600 { print("... (\(response.content.count) total chars)") }
+
+        // Long prompt test (~1k chars)
+        let longPrompt = """
+        请从历史背景、技术原理、应用场景和未来趋势四个方面，详细介绍人工智能的发展历程。\
+        人工智能（Artificial Intelligence）是计算机科学的重要分支。1956年达特茅斯会议正式提出AI概念。\
+        早期符号主义AI试图通过逻辑推理模拟人类思维。20世纪80年代专家系统曾一度兴起。\
+        进入21世纪，深度学习取得突破。2012年AlexNet在ImageNet比赛中大幅领先。\
+        2017年Google提出Transformer架构，改变了NLP领域。GPT、BERT等预训练模型展现了强大能力。\
+        当前AI正向多模态、具身智能等方向演进。AI安全治理也日益受到关注。\
+        请综合以上内容进行全面分析。
         """
 
-        // Build ~1k token prompt by repeating
-        let shortPrompt = "请介绍5种上海的美食"
-        var longPrompt = baseText
-        // Add question-like content to reach ~1k tokens
-        longPrompt += "\n\n" + String(repeating: baseText + "\n", count: 3)
-        // Trim to reasonable length
-        if longPrompt.count > 8000 { longPrompt = String(longPrompt.prefix(8000)) }
-
+        print("\n--- Long prompt test ---")
         print("Prompt length: \(longPrompt.count) chars")
 
-        print("Prompt tokens: (estimated from inference)")
+        let t1 = Date()
+        let longResponse = try await session.respond(to: longPrompt)
+        let longMs = -t1.timeIntervalSinceNow * 1000
+        let longUsage = session.usage
 
-        // ---- Inference ----
-        let inferenceStart = Date()
-        let response = try await session.respond(to: longPrompt)
-        let inferenceMs = -inferenceStart.timeIntervalSinceNow * 1000
+        print("Response (first 400 chars): \(longResponse.content.prefix(400))")
+        if longResponse.content.count > 400 { print("... (\(longResponse.content.count) total chars)") }
 
-        // ---- Output (truncated) ----
-        let previewLen = min(response.content.count, 500)
-        print("\nResponse (first \(previewLen) chars):")
-        print(String(response.content.prefix(previewLen)))
-        if response.content.count > previewLen {
-            print("... (\(response.content.count) total chars)")
-        }
-
-        // ---- Timing breakdown ----
-        let usage = session.usage
-        let totalTokens = usage.totalTokenCount
-        // Estimate prompt/output split from char ratio (~2 chars/token for Chinese)
-        let estPromptTokens = max(1, totalTokens * longPrompt.count / (longPrompt.count + response.content.count))
-        let estOutputTokens = totalTokens - estPromptTokens
-
-        let avgMsPerToken = inferenceMs / Double(max(totalTokens, 1))
-        let prefillMs = Double(estPromptTokens) * avgMsPerToken
-        let decodeMs = Double(estOutputTokens) * avgMsPerToken
-        let prefillTokPerSec = estPromptTokens > 0 ? Double(estPromptTokens) / (prefillMs / 1000.0) : 0
-        let decodeTokPerSec = estOutputTokens > 0 ? Double(estOutputTokens) / (decodeMs / 1000.0) : 0
-        let overallTokPerSec = totalTokens > 0 ? Double(totalTokens) / (inferenceMs / 1000.0) : 0
-
+        // ---- Stats ----
         print("")
         print(String(repeating: "─", count: 62))
         print("Backend    Core AI Pipelined Engine (GPU)")
-        print("Model      Qwen3.5-0.8B · int8 · decode-only S=1")
+        print("Model      Qwen3-0.6B · 4bit · dynamic")
+        print("Bundle     qwen3_0_6b_4bit_dynamic")
         print(String(repeating: "─", count: 62))
-        print("Size       bundle \(bundleSize)  .aimodel \(aimodelFileSize)")
+        print("Size       bundle \(sizeStr(url))  .aimodel \(sizeStr(aimodelURL))")
         print(String(format: "Load        %.0f ms", loadMs))
         print(String(repeating: "─", count: 62))
-        print("Prompt      ~\(estPromptTokens) tokens  (\(longPrompt.count) chars)")
-        print("Output      ~\(estOutputTokens) tokens  (\(response.content.count) chars)")
-        print("Total       \(totalTokens) tokens")
-        print(String(repeating: "─", count: 62))
-        print(String(format: "Prefill     %.0f ms  (%.1f tok/s)", prefillMs, prefillTokPerSec))
-        print(String(format: "Decode      %.0f ms  (%.1f tok/s)", decodeMs, decodeTokPerSec))
-        print(String(format: "Total       %.0f ms  (%.1f tok/s)", inferenceMs, overallTokPerSec))
+        let shortTokens = shortUsage.totalTokenCount
+        let longTokens = longUsage.totalTokenCount - shortTokens
+
+        print("Short (\(shortPrompt.count) chars):")
+        print(String(format: "  Inference  %.0f ms", shortMs))
+        print("  Tokens      \(shortTokens)")
+        if shortMs > 0 && shortTokens > 0 {
+            print(String(format: "  Throughput  %.1f tok/s", Double(shortTokens) / (shortMs / 1000.0)))
+        }
+        print("Long (\(longPrompt.count) chars):")
+        print(String(format: "  Inference  %.0f ms", longMs))
+        print("  Tokens      \(longTokens)")
+        if longMs > 0 && longTokens > 0 {
+            print(String(format: "  Throughput  %.1f tok/s", Double(longTokens) / (longMs / 1000.0)))
+        }
         print(String(repeating: "─", count: 62))
 
     } catch {
