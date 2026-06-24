@@ -30,10 +30,15 @@ targets:
       - path: macOS
     dependencies:
       - package: LLMChat
+        product: LLMChat
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.llmchat.macos
-        PRODUCT_NAME: LLMChat
+        # App module name defaults to the target name (LLMChat-macOS); do NOT
+        # set PRODUCT_NAME=LLMChat — that would collide with the imported
+        # LLMChat library's module and trigger a "multiple commands produce
+        # LLMChat.swiftmodule" error.
+        INFOPLIST_KEY_CFBundleDisplayName: LLMChat
         # Read on-device models from absolute dev paths during development.
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
@@ -50,10 +55,14 @@ targets:
       - path: iOS
     dependencies:
       - package: LLMChat
+        product: LLMChat
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.llmchat.ios
-        PRODUCT_NAME: LLMChat
+        # App module name defaults to the target name (LLMChat-iOS); do NOT
+        # set PRODUCT_NAME=LLMChat — that collides with the imported LLMChat
+        # library module.
+        INFOPLIST_KEY_CFBundleDisplayName: LLMChat
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_REQUIRED: NO
