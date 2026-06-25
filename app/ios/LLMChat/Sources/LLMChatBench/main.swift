@@ -1,17 +1,13 @@
 import Foundation
-import CoreAILanguageModels
-import FoundationModels
 import LLMChat
 
 /// Headless benchmark that mirrors the app's metric: overall throughput from
-/// total wall-clock time + real token counts from `Usage`. A clean run here
-/// means the per-reply read-out in the app is sound.
+/// total wall-clock time + real token counts. A clean run here means the
+/// per-reply read-out in the app is sound. Uses the same `LLMEngine` the app
+/// uses, so it exercises the exact same Core AI path.
 @main
 struct LLMChatBench {
     static func main() async {
-        // These model exports are compiled for S=1 steps; a larger chunk would
-        // trip an MPS shape assertion during prefill.
-        setenv("COREAI_CHUNK_THRESHOLD", "1", 1)
         let prompts = [
             "The capital of France is",
             "List three primary colors.",
@@ -22,25 +18,21 @@ struct LLMChatBench {
                 print("  bundle not found: \(desc.bundleName)\n")
                 continue
             }
-            let model: CoreAILanguageModel
+            let engine = CoreAIEngine()
             do {
-                model = try await CoreAILanguageModel(resourcesAt: url)
+                try await engine.load(at: url)
             } catch {
                 print("  load failed: \(error)\n")
                 continue
             }
-            let session = LanguageModelSession(
-                model: model,
-                instructions: "You are a helpful assistant. Be concise."
-            )
             for prompt in prompts {
-                await run(session: session, prompt: prompt)
+                await run(engine: engine, prompt: prompt)
             }
             print("")
         }
     }
 
-    static func run(session: LanguageModelSession, prompt: String) async {
+    static func run(engine: LLMEngine, prompt: String) async {
         let t0 = ContinuousClock.now
         var firstToken: Duration?
         var content = ""
@@ -48,11 +40,11 @@ struct LLMChatBench {
         var outputTokens = 0
 
         do {
-            for try await partial in session.streamResponse(to: prompt) {
+            for try await chunk in engine.stream(prompt: prompt, temperature: 0.7, maxTokens: 512) {
                 if firstToken == nil { firstToken = ContinuousClock.now - t0 }
-                content = partial.content
-                inputTokens = partial.usage.input.totalTokenCount
-                outputTokens = partial.usage.output.totalTokenCount
+                content = chunk.text
+                inputTokens = chunk.inputTokens
+                outputTokens = chunk.outputTokens
             }
         } catch {
             print("  [\(prompt)] stream failed: \(error)")

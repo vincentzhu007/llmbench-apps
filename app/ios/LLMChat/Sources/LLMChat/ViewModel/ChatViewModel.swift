@@ -1,20 +1,19 @@
 import Foundation
 import SwiftUI
-import CoreAILanguageModels
-import FoundationModels
 
-/// Per-model chat controller. One instance per `ChatScreen`. Loads a single
-/// model lazily, streams responses, and measures throughput.
+/// Per-model chat controller. One instance per `ChatScreen`. Loads a model via
+/// the injected `LLMEngine`, streams responses, and measures throughput.
 ///
-/// Only overall throughput is reliably measurable on the `LanguageModelSession`
-/// path: CoreAI buffers streamed output (snapshots arrive in a burst rather
-/// than one per generated token), so a prefill-vs-decode split is not exposed.
-/// For these S=1 model exports prefill and decode run at the same per-token
-/// rate, so overall throughput equals both. See the design doc for the
-/// follow-up (pipelined engine) that would give a true split on the 0.8B.
+/// Only overall throughput is reliably measurable on this path: CoreAI buffers
+/// streamed output, so a prefill-vs-decode split is not exposed. With the S=1
+/// model exports prefill and decode run at the same per-token rate, so overall
+/// throughput equals both. See the design doc for the follow-up (pipelined
+/// engine) that would give a true split on the 0.8B.
 @MainActor
 final class ChatViewModel: ObservableObject {
     let model: ModelDescriptor
+    private let engine: LLMEngine
+    private var isLoaded = false
 
     @Published var messages: [ChatMessage] = []
     @Published var inputText = ""
@@ -30,9 +29,6 @@ final class ChatViewModel: ObservableObject {
     // Session-wide average throughput over messages that carry metrics
     @Published var avgThroughput: Double? = nil
 
-    private var languageModel: CoreAILanguageModel?   // retained for the session's lifetime
-    private var session: LanguageModelSession?
-
     enum LoadState: String {
         case idle = "Load Model"
         case loading = "Loading…"
@@ -40,30 +36,23 @@ final class ChatViewModel: ObservableObject {
         case error = "Error"
     }
 
-    init(model: ModelDescriptor) {
+    init(model: ModelDescriptor, engine: LLMEngine = CoreAIEngine()) {
         self.model = model
+        self.engine = engine
     }
 
     var isAvailable: Bool { model.resolveBundleURL() != nil }
 
     func loadModel() async {
-        guard languageModel == nil else { return }
+        guard !isLoaded else { return }
         guard let bundleURL = model.resolveBundleURL() else {
             modelLoadState = .error
             return
         }
         modelLoadState = .loading
-        // These model exports are compiled for S=1 (single-token) steps. A
-        // larger chunk threshold makes prefill process many tokens at once and
-        // trips an MPS shape assertion, so force single-token chunking.
-        setenv("COREAI_CHUNK_THRESHOLD", "1", 1)
         do {
-            let m = try await CoreAILanguageModel(resourcesAt: bundleURL)
-            self.languageModel = m
-            self.session = LanguageModelSession(
-                model: m,
-                instructions: "You are \(model.displayName), a helpful AI assistant. Answer concisely."
-            )
+            try await engine.load(at: bundleURL)
+            isLoaded = true
             modelLoadState = .ready
         } catch {
             print("Load error: \(error)")
@@ -72,7 +61,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func send() async {
-        guard let session,
+        guard isLoaded,
               !inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         let prompt = inputText
         inputText = ""
@@ -81,28 +70,25 @@ final class ChatViewModel: ObservableObject {
         streamingText = ""
         liveTokPerSec = nil
 
-        let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
         let t0 = ContinuousClock.now
         var tTTF: Duration?
         var lastContent = ""
-        var usageInputTokens = 0
-        var usageOutputTokens = 0
+        var inputTokens = 0
+        var outputTokens = 0
 
         do {
-            let stream = session.streamResponse(to: prompt, options: options)
-            for try await partial in stream {
+            for try await chunk in engine.stream(prompt: prompt, temperature: temperature, maxTokens: maxTokens) {
                 if tTTF == nil { tTTF = ContinuousClock.now - t0 }
-                lastContent = partial.content
+                lastContent = chunk.text
                 streamingText = lastContent
-                usageInputTokens = partial.usage.input.totalTokenCount
-                usageOutputTokens = partial.usage.output.totalTokenCount
-                let liveTokens = usageInputTokens + usageOutputTokens
-                liveTokPerSec = liveRate(tokens: liveTokens, t0: t0)
+                inputTokens = chunk.inputTokens
+                outputTokens = chunk.outputTokens
+                liveTokPerSec = liveRate(tokens: inputTokens + outputTokens, t0: t0)
             }
 
             let totalDur = ContinuousClock.now - t0
-            let promptTokens = usageInputTokens > 0 ? usageInputTokens : estimateTokens(prompt)
-            let outputTokens = max(usageOutputTokens > 0 ? usageOutputTokens : estimateTokens(lastContent), 1)
+            let promptTokens = inputTokens > 0 ? inputTokens : estimateTokens(prompt)
+            let outputTokens = max(outputTokens > 0 ? outputTokens : estimateTokens(lastContent), 1)
             let throughput = rate(promptTokens + outputTokens, over: totalDur)
 
             messages.append(ChatMessage(
@@ -117,13 +103,7 @@ final class ChatViewModel: ObservableObject {
             ))
             updateAverage(with: throughput)
         } catch {
-            // Streaming failed — fall back to a one-shot respond with no metrics.
-            do {
-                let resp = try await session.respond(to: prompt, options: options)
-                messages.append(ChatMessage(role: .assistant, content: resp.content))
-            } catch let fallbackError {
-                messages.append(ChatMessage(role: .assistant, content: "Error: \(fallbackError.localizedDescription)"))
-            }
+            messages.append(ChatMessage(role: .assistant, content: "Error: \(error.localizedDescription)"))
         }
 
         isGenerating = false
@@ -156,7 +136,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Rough token estimate (~3.5 chars/token) used when the engine doesn't
-    /// report `Usage`, and for the live counter before usage arrives.
+    /// report token counts, and for the live counter before they arrive.
     private func estimateTokens(_ text: String) -> Int {
         max(Int((Double(text.count) / 3.5).rounded()), text.isEmpty ? 0 : 1)
     }
