@@ -64,9 +64,11 @@ targets:
         # library module.
         INFOPLIST_KEY_CFBundleDisplayName: LLMChat
         TARGETED_DEVICE_FAMILY: "1,2"
-        CODE_SIGN_IDENTITY: "-"
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
+        # Allow automatic signing so the app can be installed on a real device.
+        # Pick your Development Team under Signing & Capabilities in Xcode (or
+        # set DEVELOPMENT_TEAM below). Without this the app builds but fails to
+        # install with "No code signature found" (0xe800801c).
+        CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
