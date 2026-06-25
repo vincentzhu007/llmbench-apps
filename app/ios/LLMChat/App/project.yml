@@ -72,3 +72,25 @@ targets:
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+
+# Explicit shared schemes so the Run action launches the right app target.
+# Without these, Xcode auto-creates per-user schemes whose Run executable can
+# be left unset, so clicking Run builds but never launches.
+schemes:
+  LLMChat-macOS:
+    build:
+      targets:
+        LLMChat-macOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  LLMChat-iOS:
+    build:
+      targets:
+        LLMChat-iOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
