@@ -38,26 +38,27 @@ Apple 在 iOS 27 / macOS 27 引入了全新的 **Core AI** 运行时与 `.aimode
 
 ```
 llmbench-apps/
-├── app/
-│   └── ios/LLMChat/               # Gallery 风格 SwiftUI 聊天应用（iOS 27 / macOS 27）
-│       ├── Package.swift          # SwiftPM：LLMChat 库 + LLMChatRunner(macOS) + LLMChatBench
-│       ├── Sources/LLMChat/       # 共享 UI 库
-│       │   ├── RootView.swift     # 库入口 → GalleryScreen
-│       │   ├── Models/ModelRegistry.swift   # 模型描述 + 路径解析（按平台）
-│       │   ├── ViewModel/ChatViewModel.swift# 按模型实例化 + 流式 + throughput 计时
-│       │   └── Views/             # GalleryScreen/Card · ChatScreen · ChatBubble · MetricsLabel · ModelCard · SettingsSheet
-│       ├── Sources/LLMChatRunner/ # macOS @main App（swift run）
-│       ├── Sources/LLMChatBench/  # headless bench，打印每个模型 throughput
-│       └── App/project.yml        # xcodegen：macOS + iOS 双 App target 工程描述
+├── apple-core-ai/                      # Apple Core AI 相关：运行时 + 模型转换 + 产物
+│   ├── coreai-models/                  # 运行时库（Swift+Python，独立 git repo）
+│   ├── coreai-model-zoo/               # git submodule：参考生态（模型卡 / 转换脚本 / 知识库）
+│   ├── qwen3_5_overlay.py              # Qwen3.5 模型覆写层（hybrid SSM + full-attention）
+│   ├── export_qwen35_4b_stateful.py    # 导出 Qwen3.5-4B → 有状态 .aimodel（fp16 / int8）
+│   ├── exports/                        # 导出产物（gitignored）
+│   └── qwen3.5-0.8B-CoreAI/            # 导出产物（gitignored）
 │
-├── export_qwen35_4b_stateful.py   # 导出 Qwen3.5-4B → 有状态 .aimodel（fp16 / int8）
-├── qwen3_5_overlay.py             # Qwen3.5 模型覆写层（hybrid SSM + full-attention）
+├── apps/ios/LLMChat/                   # Gallery 风格 SwiftUI 聊天应用（iOS 27 / macOS 27）
+│   ├── Package.swift                   # SwiftPM：LLMChat 库 + LLMChatRunner + LLMChatBench
+│   ├── Sources/LLMChat/                # 共享 UI 库
+│   │   ├── RootView.swift              # 库入口 → GalleryScreen
+│   │   ├── Models/ModelRegistry.swift  # 模型描述 + 路径解析（按平台）
+│   │   ├── ViewModel/ChatViewModel.swift# 按模型实例化 + 流式 + throughput 计时
+│   │   ├── LLMEngine.swift             # LLMEngine 协议 + CoreAIEngine（隔离 Core AI）
+│   │   └── Views/                      # GalleryScreen/Card · ChatScreen · ChatBubble · MetricsLabel · ModelCard · SettingsSheet
+│   ├── Sources/LLMChatRunner/          # macOS @main App（swift run）
+│   ├── Sources/LLMChatBench/           # headless bench，打印每个模型 throughput
+│   └── App/project.yml                 # xcodegen：macOS + iOS 双 App target 工程描述
 │
-├── docs/
-│   ├── chunked-prefill.md          # Chunked prefill 支持状态与限制分析
-│   └── plans/                      # 设计文档
-│
-├── coreai-model-zoo/              # git submodule：参考生态（模型卡 / 转换脚本 / 知识库）
+├── docs/                               # chunked-prefill 分析 + 设计文档
 ├── .gitmodules
 └── README.md
 ```
@@ -72,7 +73,7 @@ llmbench-apps/
 
 - **Xcode 27**（Swift 6.4 + iOS 27 / macOS 27 SDK，含 `CoreAI` 框架）
 - 目标设备：iOS 27 或 macOS 27
-- 兄弟依赖：需在**仓库根目录**有 `coreai-models` 运行时库（应用通过 `Package.swift` 中的 `.package(path: "../../../coreai-models")` 引用它）
+- 兄弟依赖：需有 `apple-core-ai/coreai-models` 运行时库（应用通过 `Package.swift` 中的 `.package(path: "../../../apple-core-ai/coreai-models")` 引用它）
 
 **运行模型转换管道**
 
@@ -88,8 +89,8 @@ llmbench-apps/
 ### 1. 构建并运行 LLMChat 应用
 
 ```bash
-# 0) 先准备仓库根目录的 coreai-models 运行时（见「环境要求」）
-git clone --recurse-submodules <本仓库> && cd llmbench-apps/app/ios/LLMChat
+# 0) 先准备 apple-core-ai/coreai-models 运行时（见「环境要求」）
+git clone --recurse-submodules <本仓库> && cd llmbench-apps/apps/ios/LLMChat
 
 # 1a) macOS：直接用 SwiftPM 运行（推荐开发用法）
 swift run LLMChatRunner
@@ -108,13 +109,13 @@ swift run LLMChatBench
 
 ```bash
 # fp16（默认）
-python export_qwen35_4b_stateful.py \
+python apple-core-ai/export_qwen35_4b_stateful.py \
     --hf-path /path/to/Qwen/Qwen3.5-4B \
     --mode fp16 \
-    --out-dir exports
+    --out-dir apple-core-ai/exports
 
 # int8 线性量化
-python export_qwen35_4b_stateful.py \
+python apple-core-ai/export_qwen35_4b_stateful.py \
     --hf-path /path/to/Qwen/Qwen3.5-4B \
     --mode int8lin \
     --full          # 导出全部 32 层（默认可截断用于调试）
@@ -140,12 +141,12 @@ python export_qwen35_4b_stateful.py \
 
 ### 模型转换管道（Python）
 
-两个脚本配合，把 HuggingFace 上的 Qwen3.5-4B 转成有状态、动态 shape 的 Core AI 包：
+`apple-core-ai/` 下两个脚本配合，把 HuggingFace 上的 Qwen3.5-4B 转成有状态、动态 shape 的 Core AI 包：
 
 | 脚本 | 作用 |
 |------|------|
-| `qwen3_5_overlay.py` | Qwen3.5 的**模型覆写层**。用 `coreai_models` 原语重写网络：每隔 4 层为带 GQA + QK-norm + RoPE + KV cache 的**全注意力层**，其余为基于 `coreai_torch.GatedDeltaUpdate` 复合算子的 **SSM（线性注意力）层**。有状态前向，4 个状态：`k_cache`、`v_cache`、`conv_state`、`rec_state`。 |
-| `export_qwen35_4b_stateful.py` | **导出脚本**。加载覆写层 →（可选）`int8lin` 块量化 → `export_to_coreai` 导出动态 shape IR → `optimize()` → 保存为 `.aimodel` 并生成 `metadata.json` + tokenizer。仅 `k_cache`/`v_cache` 作为真正的 CoreAI 状态（带 slice_update），`conv_state`/`rec_state` 作为常规输入输出。 |
+| `apple-core-ai/qwen3_5_overlay.py` | Qwen3.5 的**模型覆写层**。用 `coreai_models` 原语重写网络：每隔 4 层为带 GQA + QK-norm + RoPE + KV cache 的**全注意力层**，其余为基于 `coreai_torch.GatedDeltaUpdate` 复合算子的 **SSM（线性注意力）层**。有状态前向，4 个状态：`k_cache`、`v_cache`、`conv_state`、`rec_state`。 |
+| `apple-core-ai/export_qwen35_4b_stateful.py` | **导出脚本**。加载覆写层 →（可选）`int8lin` 块量化 → `export_to_coreai` 导出动态 shape IR → `optimize()` → 保存为 `.aimodel` 并生成 `metadata.json` + tokenizer。仅 `k_cache`/`v_cache` 作为真正的 CoreAI 状态（带 slice_update），`conv_state`/`rec_state` 作为常规输入输出。 |
 
 主要参数：
 
@@ -156,7 +157,7 @@ python export_qwen35_4b_stateful.py \
 
 ### coreai-model-zoo 子模块
 
-`coreai-model-zoo/` 是一个 git submodule（`john-rocky/coreai-model-zoo`），作为**参考生态**：
+`apple-core-ai/coreai-model-zoo/` 是一个 git submodule（`john-rocky/coreai-model-zoo`），作为**参考生态**：
 
 - `conversion/` — 各类模型（Qwen3.x、Gemma 4、GLM-4.7、LFM2、MiniCPM-V、RF-DETR 等）的导出脚本
 - `knowledge/` — Core AI 相关的深度文档（pipelined engine、有状态 KV cache、量化、自定义 Metal 内核、compute units 等）
