@@ -18,12 +18,12 @@ struct MetricsLabel: View {
                     .font(.system(size: 7))
                 Text("\(Int(metrics.throughput)) tok/s")
             }
-            // Tokens: prompt → output
+            // Tokens: prompt → output (with thinking breakdown when the model reasons)
             HStack(spacing: 3) {
                 Image(systemName: "text.alignleft")
                     .foregroundStyle(.blue)
                     .font(.system(size: 7))
-                Text("\(formatTokens(metrics.promptTokens)) → \(formatTokens(metrics.outputTokens)) tok")
+                Text(tokenText)
             }
             // Time to first token
             HStack(spacing: 3) {
@@ -42,6 +42,17 @@ struct MetricsLabel: View {
             return String(format: "%.1fs TTFT", Double(ms) / 1000)
         }
         return "\(ms)ms TTFT"
+    }
+
+    /// "prompt → output tok", annotating hidden thinking tokens when present:
+    /// e.g. "39 → 236 tok (228 think)" means 236 output total, 228 of which
+    /// were reasoning and 8 the visible answer.
+    private var tokenText: String {
+        var s = "\(formatTokens(metrics.promptTokens)) → \(formatTokens(metrics.outputTokens)) tok"
+        if metrics.reasoningTokens > 0 {
+            s += " (\(formatTokens(metrics.reasoningTokens)) think)"
+        }
+        return s
     }
 
     private func formatTokens(_ n: Int) -> String {

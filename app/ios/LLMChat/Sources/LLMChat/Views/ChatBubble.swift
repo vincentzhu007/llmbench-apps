@@ -105,5 +105,8 @@ struct ChatMessage: Identifiable {
         /// snapshots, so this is the time to the first flush, not a clean
         /// prefill boundary.
         let ttftMs: Int
+        /// Output tokens spent on hidden reasoning/thinking (subset of
+        /// `outputTokens`). Zero for models that don't reason.
+        let reasoningTokens: Int
     }
 }

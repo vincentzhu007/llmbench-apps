@@ -75,6 +75,7 @@ final class ChatViewModel: ObservableObject {
         var lastContent = ""
         var inputTokens = 0
         var outputTokens = 0
+        var reasoningTokens = 0
 
         do {
             for try await chunk in engine.stream(prompt: prompt, temperature: temperature, maxTokens: maxTokens) {
@@ -83,6 +84,7 @@ final class ChatViewModel: ObservableObject {
                 streamingText = lastContent
                 inputTokens = chunk.inputTokens
                 outputTokens = chunk.outputTokens
+                reasoningTokens = chunk.reasoningTokens
                 liveTokPerSec = liveRate(tokens: inputTokens + outputTokens, t0: t0)
             }
 
@@ -98,7 +100,8 @@ final class ChatViewModel: ObservableObject {
                     promptTokens: promptTokens,
                     outputTokens: outputTokens,
                     throughput: throughput,
-                    ttftMs: Int((durationSeconds(tTTF ?? totalDur) * 1000).rounded())
+                    ttftMs: Int((durationSeconds(tTTF ?? totalDur) * 1000).rounded()),
+                    reasoningTokens: reasoningTokens
                 )
             ))
             updateAverage(with: throughput)

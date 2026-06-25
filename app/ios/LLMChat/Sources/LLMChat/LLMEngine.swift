@@ -10,11 +10,15 @@ public struct EngineChunk: Sendable {
     public let text: String
     public let inputTokens: Int
     public let outputTokens: Int
+    /// Output tokens spent on hidden reasoning/thinking (subset of
+    /// `outputTokens`). Qwen3-style models emit these before the answer.
+    public let reasoningTokens: Int
 
-    public init(text: String, inputTokens: Int, outputTokens: Int) {
+    public init(text: String, inputTokens: Int, outputTokens: Int, reasoningTokens: Int = 0) {
         self.text = text
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
+        self.reasoningTokens = reasoningTokens
     }
 }
 
@@ -49,7 +53,7 @@ public final class CoreAIEngine: LLMEngine, @unchecked Sendable {
     }
 
     public func stream(prompt: String, temperature: Double, maxTokens: Int) -> AsyncThrowingStream<EngineChunk, Error> {
-        guard let session else {
+        guard let session: LanguageModelSession else {
             return AsyncThrowingStream { $0.finish(throwing: NSError(domain: "LLMChat", code: 1, userInfo: [NSLocalizedDescriptionKey: "Engine not loaded"])) }
         }
         let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
@@ -60,7 +64,8 @@ public final class CoreAIEngine: LLMEngine, @unchecked Sendable {
                         continuation.yield(EngineChunk(
                             text: partial.content,
                             inputTokens: partial.usage.input.totalTokenCount,
-                            outputTokens: partial.usage.output.totalTokenCount
+                            outputTokens: partial.usage.output.totalTokenCount,
+                            reasoningTokens: partial.usage.output.reasoningTokenCount
                         ))
                     }
                     continuation.finish()

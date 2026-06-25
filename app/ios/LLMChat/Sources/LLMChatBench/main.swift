@@ -38,6 +38,7 @@ struct LLMChatBench {
         var content = ""
         var inputTokens = 0
         var outputTokens = 0
+        var reasoningTokens = 0
 
         do {
             for try await chunk in engine.stream(prompt: prompt, temperature: 0.7, maxTokens: 512) {
@@ -45,6 +46,7 @@ struct LLMChatBench {
                 content = chunk.text
                 inputTokens = chunk.inputTokens
                 outputTokens = chunk.outputTokens
+                reasoningTokens = chunk.reasoningTokens
             }
         } catch {
             print("  [\(prompt)] stream failed: \(error)")
@@ -56,11 +58,12 @@ struct LLMChatBench {
         let inTok = inputTokens > 0 ? inputTokens : estimateTokens(prompt)
         let outTok = max(outputTokens, 1)
         let throughput = Double(inTok + outTok) / total
+        let think = reasoningTokens > 0 ? "  (think \(reasoningTokens), answer \(max(outTok - reasoningTokens, 0)))" : ""
 
         print(String(format: "  Q: %@", prompt))
         print(String(format: "     A: %@", String(content.prefix(60)).replacingOccurrences(of: "\n", with: " ")))
-        print(String(format: "     tok %d→%d  total %.2fs  TTFT %.2fs  throughput %.0f tok/s",
-                     inTok, outTok, total, ttft, throughput))
+        print(String(format: "     tok %d→%d%@  total %.2fs  TTFT %.2fs  throughput %.0f tok/s",
+                     inTok, outTok, think, total, ttft, throughput))
     }
 
     static func estimateTokens(_ text: String) -> Int {
