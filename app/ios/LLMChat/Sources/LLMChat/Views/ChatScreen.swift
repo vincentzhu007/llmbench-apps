@@ -145,18 +145,24 @@ private struct EmptyStateView: View {
 
 private struct InputBar: View {
     @EnvironmentObject var vm: ChatViewModel
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             Divider()
             HStack(alignment: .bottom, spacing: 12) {
-                TextField("Message…", text: $vm.inputText, axis: .vertical)
+                // Single-line + explicit FocusState: the multi-line
+                // `axis: .vertical` TextField was not becoming first responder
+                // (no keyboard) on iOS 27 beta. Focusing explicitly is reliable.
+                TextField("Message…", text: $vm.inputText)
                     .textFieldStyle(.plain)
-                    .lineLimit(1...5)
+                    .focused($inputFocused)
+                    .submitLabel(.send)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 12)
                     .background(.ultraThinMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .onSubmit { Task { await vm.send() } }
 
                 Button {
                     Task { await vm.send() }
