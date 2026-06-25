@@ -87,7 +87,7 @@ public enum ModelRegistry {
             accentColor: .purple,
             tagline: "Fast · on-device",
             estimatedDecodeTokPerSec: 200,
-            devPath: "/Users/zgd/Code/llm/llmbench-apps/apple-core-ai/exports/qwen3_0.6b/qwen3_0_6b_4bit_dynamic"
+            devPath: "/Users/zgd/Code/llm/llmbench-apps/llm-engines/apple-core-ai/exports/qwen3_0.6b/qwen3_0_6b_4bit_dynamic"
         ),
         ModelDescriptor(
             id: "qwen3.5-0.8b",
@@ -101,7 +101,7 @@ public enum ModelRegistry {
             accentColor: .blue,
             tagline: "Higher quality · int8",
             estimatedDecodeTokPerSec: 70,
-            devPath: "/Users/zgd/Code/llm/llmbench-apps/apple-core-ai/qwen3.5-0.8B-CoreAI/gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym"
+            devPath: "/Users/zgd/Code/llm/llmbench-apps/llm-engines/apple-core-ai/qwen3.5-0.8B-CoreAI/gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym"
         ),
     ]
 }

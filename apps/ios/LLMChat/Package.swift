@@ -10,7 +10,7 @@ let package = Package(
         .executable(name: "LLMChatBench", targets: ["LLMChatBench"]),
     ],
     dependencies: [
-        .package(path: "../../../apple-core-ai/coreai-models")
+        .package(path: "../../../llm-engines/apple-core-ai/coreai-models")
     ],
     targets: [
         // Shared UI library: Gallery, chat screen, streaming timing, metrics.
