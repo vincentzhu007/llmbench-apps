@@ -69,13 +69,10 @@ targets:
         # set DEVELOPMENT_TEAM below). Without this the app builds but fails to
         # install with "No code signature found" (0xe800801c).
         CODE_SIGN_STYLE: Automatic
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        # Expose the app's Documents folder in Finder/iTunes so model bundles
-        # can be side-loaded onto the device (drag the bundle folder in).
-        INFOPLIST_KEY_UIFileSharingEnabled: YES
-        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+        # Real Info.plist (not GENERATE_INFOPLIST_FILE) because UIFileSharingEnabled
+        # has no INFOPLIST_KEY_ mapping — needed for Finder side-loading of models.
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Info-iOS.plist
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
 
