@@ -54,16 +54,17 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// Returns the first existing candidate, or nil if none are present
     /// (the Gallery card then shows an "unavailable" state instead of crashing).
     public func resolveBundleURL() -> URL? {
+        let documents = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)
+            .first
         let candidates: [URL] = [
             // 1. Shipped inside the app bundle (real distribution, both platforms)
             Bundle.main.bundleURL.appendingPathComponent("Models/\(bundleName)"),
-            // 2. User documents directory (side-loaded models)
-            FileManager.default
-                .urls(for: .documentDirectory, in: .userDomainMask)
-                .first?
-                .appendingPathComponent("Models/\(bundleName)")
-                ?? URL(fileURLWithPath: "/dev/null"),
-            // 3. Dev fallback: absolute path on the dev machine
+            // 2. Side-loaded into the app's Documents via Finder file sharing:
+            //    either flat (Documents/<bundle>) or under a Models/ subfolder.
+            documents?.appendingPathComponent(bundleName) ?? URL(fileURLWithPath: "/dev/null"),
+            documents?.appendingPathComponent("Models/\(bundleName)") ?? URL(fileURLWithPath: "/dev/null"),
+            // 3. Dev fallback: absolute path on the dev machine (macOS only)
             URL(fileURLWithPath: devPath),
         ]
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
