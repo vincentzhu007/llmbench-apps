@@ -151,17 +151,19 @@ private struct InputBar: View {
         VStack(spacing: 0) {
             Divider()
             HStack(alignment: .bottom, spacing: 12) {
-                // Single-line + explicit FocusState: the multi-line
-                // `axis: .vertical` TextField was not becoming first responder
-                // (no keyboard) on iOS 27 beta. Focusing explicitly is reliable.
+                // Keep the TextField itself free of material/clipShape modifiers:
+                // on iOS 27 beta those broke hit-testing so tapping never focused
+                // it. The rounded background is a plain Color fill instead.
                 TextField("Message…", text: $vm.inputText)
                     .textFieldStyle(.plain)
                     .focused($inputFocused)
                     .submitLabel(.send)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.secondary.opacity(0.18))
+                    )
                     .onSubmit { Task { await vm.send() } }
 
                 Button {
@@ -176,7 +178,7 @@ private struct InputBar: View {
             .padding(.horizontal)
             .padding(.vertical, 10)
         }
-        .background(Material.bar)
+        .background(.regularMaterial)
     }
 
     private var canSend: Bool {
