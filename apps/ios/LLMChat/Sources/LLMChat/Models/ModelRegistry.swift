@@ -103,5 +103,19 @@ public enum ModelRegistry {
             estimatedDecodeTokPerSec: 70,
             devPath: "/Users/zgd/Code/llm/llmbench-apps/llm-engines/apple-core-ai/qwen3.5-0.8B-CoreAI/gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym"
         ),
+        ModelDescriptor(
+            id: "qwen3-4b",
+            displayName: "Qwen3-4B",
+            bundleName: "qwen3_4b_macos_4bit",
+            quant: "4bit · macOS",
+            params: "4B",
+            vocab: "151,936",
+            romSize: "2.1 GB",
+            systemIcon: "sparkles",
+            accentColor: .teal,
+            tagline: "Larger · higher quality",
+            estimatedDecodeTokPerSec: 35,
+            devPath: "/Users/zgd/Code/llm/llmbench-apps/llm-engines/apple-core-ai/exports/qwen3_4b_macos_4bit"
+        ),
     ]
 }
