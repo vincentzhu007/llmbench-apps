@@ -73,6 +73,9 @@ targets:
         # has no INFOPLIST_KEY_ mapping — needed for Finder side-loading of models.
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Info-iOS.plist
+        # Entitlements: raise the app's memory ceiling + virtual address space
+        # so the 4B LLM can load on 8GB iPhones.
+        CODE_SIGN_ENTITLEMENTS: LLMChat-iOS.entitlements
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
 
