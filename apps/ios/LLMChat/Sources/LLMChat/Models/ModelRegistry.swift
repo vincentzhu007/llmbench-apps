@@ -5,27 +5,40 @@ import SwiftUI
 ///
 /// Each descriptor maps to a Core AI model bundle (a directory containing
 /// `metadata.json` + `<bundleName>.aimodel` + `tokenizer/`), loadable via
-/// `CoreAILanguageModel(resourcesAt:)`. Bundle resolution checks the app
-/// bundle first (for shipped apps), then falls back to an absolute dev path
-/// (for running directly from the build output during development).
+/// `CoreAILanguageModel(resourcesAt:)`. A model can have separate macOS and
+/// iOS bundle builds (different compression/quantization per platform);
+/// `bundleName` resolves to the right one for the current platform. Bundle
+/// resolution checks the app bundle first, then side-loaded Documents, then
+/// an absolute dev-path fallback (macOS development only).
 public struct ModelDescriptor: Identifiable, Hashable, Sendable {
     public let id: String
     public let displayName: String
-    public let bundleName: String          // matches the on-disk bundle dir name
-    public let quant: String               // e.g. "4bit · dynamic"
-    public let params: String              // e.g. "0.6B"
-    public let vocab: String               // e.g. "151,936"
-    public let romSize: String?            // e.g. "331 MB"
-    public let systemIcon: String          // SF Symbol
+    public let macOSBundleName: String
+    public let iOSBundleName: String?       // nil = no iOS build (macOS-only model)
+    public let quant: String                // e.g. "4bit"
+    public let params: String               // e.g. "0.6B"
+    public let vocab: String                // e.g. "151,936"
+    public let romSize: String?             // e.g. "331 MB"
+    public let systemIcon: String           // SF Symbol
     public let accentColor: Color
     public let tagline: String
     public let estimatedDecodeTokPerSec: Int   // model-card hint shown before first run
-    public let devPath: String             // absolute fallback path used during development
+    public let devPath: String             // macOS dev-machine fallback (ignored on iOS device)
+
+    /// The bundle name to look for on the current platform.
+    public var bundleName: String {
+        #if os(iOS)
+        return iOSBundleName ?? macOSBundleName
+        #else
+        return macOSBundleName
+        #endif
+    }
 
     public init(
         id: String,
         displayName: String,
-        bundleName: String,
+        macOSBundleName: String,
+        iOSBundleName: String? = nil,
         quant: String,
         params: String,
         vocab: String,
@@ -38,7 +51,8 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
     ) {
         self.id = id
         self.displayName = displayName
-        self.bundleName = bundleName
+        self.macOSBundleName = macOSBundleName
+        self.iOSBundleName = iOSBundleName
         self.quant = quant
         self.params = params
         self.vocab = vocab
@@ -72,13 +86,14 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
 }
 
 public enum ModelRegistry {
-    /// The two real, loadable on-device models. Add a new `.init(...)` here to
-    /// grow the Gallery.
+    /// The real, loadable on-device models. Add a new `.init(...)` here to
+    /// grow the Gallery. Models with an iOS build set `iOSBundleName`; others
+    /// are macOS-only (their card shows "Not found" on iOS until exported).
     public static let all: [ModelDescriptor] = [
         ModelDescriptor(
             id: "qwen3-0.6b",
             displayName: "Qwen3-0.6B",
-            bundleName: "qwen3_0_6b_4bit_dynamic",
+            macOSBundleName: "qwen3_0_6b_4bit_dynamic",
             quant: "4bit · dynamic",
             params: "0.6B",
             vocab: "151,936",
@@ -92,7 +107,7 @@ public enum ModelRegistry {
         ModelDescriptor(
             id: "qwen3.5-0.8b",
             displayName: "Qwen3.5-0.8B",
-            bundleName: "qwen3_5_0_8b_decode_int8hu_perchan_sym",
+            macOSBundleName: "qwen3_5_0_8b_decode_int8hu_perchan_sym",
             quant: "int8 · per-channel",
             params: "0.8B",
             vocab: "248,320",
@@ -106,8 +121,9 @@ public enum ModelRegistry {
         ModelDescriptor(
             id: "qwen3-4b",
             displayName: "Qwen3-4B",
-            bundleName: "qwen3_4b_macos_4bit",
-            quant: "4bit · macOS",
+            macOSBundleName: "qwen3_4b_macos_4bit",
+            iOSBundleName: "qwen3_4b_ios_4bit_palettized",   // 4bit palettized build for iOS
+            quant: "4bit",
             params: "4B",
             vocab: "151,936",
             romSize: "2.1 GB",
