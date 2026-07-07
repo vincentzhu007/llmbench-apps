@@ -122,7 +122,12 @@ public enum ModelRegistry {
             id: "qwen3-4b",
             displayName: "Qwen3-4B",
             macOSBundleName: "qwen3_4b_macos_4bit",
-            iOSBundleName: "qwen3_4b_ios_4bit_palettized",   // 4bit palettized build for iOS
+            // iOS uses the SAME non-palettized 4bit build: the iOS palettized
+            // build crashes on-device (ANE compiler bug in fillPalettizedKernelInfo
+            // on iOS 27 beta), and the iOS overlay can't export a non-palettized
+            // 4bit build (stateful forward signature). The macOS per-block INT4
+            // build is non-palettized → stays on GPU → loads fine on iOS too.
+            iOSBundleName: "qwen3_4b_macos_4bit",
             quant: "4bit",
             params: "4B",
             vocab: "151,936",
