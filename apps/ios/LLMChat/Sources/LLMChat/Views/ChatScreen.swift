@@ -57,6 +57,8 @@ struct ChatScreen: View {
                 .onChange(of: vm.streamingText) { _, _ in
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
+                // Swipe the message list to dismiss the keyboard (iOS pattern).
+                .scrollDismissesKeyboard(.interactively)
             }
 
             InputBar()
